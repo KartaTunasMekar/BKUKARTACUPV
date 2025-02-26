@@ -1,0 +1,62 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function untuk memeriksa autentikasi
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function untuk memeriksa kepemilikan data
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function untuk validasi data transaksi
+    function isValidTransaction() {
+      let incomingData = request.resource.data;
+      return incomingData.amount is number && 
+             incomingData.amount > 0 && 
+             incomingData.amount < 1000000000 &&
+             incomingData.description is string &&
+             incomingData.description.size() >= 3 &&
+             incomingData.description.size() <= 100 &&
+             incomingData.category is string &&
+             incomingData.category.size() >= 2 &&
+             incomingData.category.size() <= 30 &&
+             incomingData.date is string &&
+             incomingData.userId is string &&
+             incomingData.userId == request.auth.uid;
+    }
+
+    // Rules untuk koleksi transactions
+    match /transactions/{transactionId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidTransaction();
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+
+    // Rules untuk koleksi pemasukan
+    match /pemasukan/{document=**} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidTransaction();
+      allow update, delete: if isOwner(resource.data.userId);
+      // Izinkan query dengan orderBy dan where
+      allow list: if isAuthenticated() && request.query.limit <= 100;
+    }
+
+    // Rules untuk koleksi pengeluaran
+    match /pengeluaran/{document=**} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidTransaction();
+      allow update, delete: if isOwner(resource.data.userId);
+      // Izinkan query dengan orderBy dan where
+      allow list: if isAuthenticated() && request.query.limit <= 100;
+    }
+
+    // Rules untuk koleksi bendahara
+    match /bendahara/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}
